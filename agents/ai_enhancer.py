@@ -10,28 +10,41 @@ except ImportError:
     OPENAI_AVAILABLE = False
     logger.warning("OpenAI package not installed. AI reasoning will be disabled.")
 
-from config import OPENAI_API_KEY, MODEL_NAME, TEMPERATURE, USE_AI_REASONING
+from config import (
+    OPENAI_API_KEY, MODEL_NAME, TEMPERATURE, USE_AI_REASONING,
+    USE_AZURE_OPENAI, AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT,
+    AZURE_OPENAI_API_VERSION, AZURE_OPENAI_CHAT_DEPLOYMENT_NAME
+)
+from utils.openai_client import get_openai_client
 
 class AIReasoningEnhancer:
-    """Uses OpenAI to enhance decision reasoning"""
+    """Uses OpenAI to enhance decision reasoning - supports both OpenAI and Azure OpenAI"""
     
     def __init__(self):
         if not OPENAI_AVAILABLE:
             self.client = None
             self.enabled = False
             logger.warning("OpenAI package not available. AI reasoning disabled.")
-        elif OPENAI_API_KEY and OPENAI_API_KEY != "your-openai-api-key-here":
-            try:
-                self.client = openai.OpenAI(api_key=OPENAI_API_KEY)
-                self.enabled = USE_AI_REASONING
-            except Exception as e:
+        else:
+            # Try to initialize client (Azure or regular OpenAI)
+            api_key = AZURE_OPENAI_API_KEY if USE_AZURE_OPENAI else OPENAI_API_KEY
+            api_key = api_key or OPENAI_API_KEY  # Fallback to regular key
+            
+            if not api_key or api_key == "your-openai-api-key-here":
                 self.client = None
                 self.enabled = False
-                logger.warning(f"Failed to initialize OpenAI client: {e}. AI reasoning disabled.")
-        else:
-            self.client = None
-            self.enabled = False
-            logger.warning("OpenAI API key not configured. AI reasoning disabled.")
+                logger.warning("OpenAI API key not configured. AI reasoning disabled.")
+            else:
+                self.client = get_openai_client(
+                    api_key=api_key,
+                    azure_endpoint=AZURE_OPENAI_ENDPOINT if USE_AZURE_OPENAI else None,
+                    api_version=AZURE_OPENAI_API_VERSION if USE_AZURE_OPENAI else None,
+                    deployment_name=AZURE_OPENAI_CHAT_DEPLOYMENT_NAME if USE_AZURE_OPENAI else None,
+                    use_azure=USE_AZURE_OPENAI
+                )
+                self.enabled = USE_AI_REASONING if self.client else False
+                if not self.client:
+                    logger.warning("Failed to initialize OpenAI client. AI reasoning disabled.")
     
     def enhance_reasoning(self, user_context: Dict, requested_permission: str,
                          pre_requisites_status: Dict, priority_score: float,
@@ -79,8 +92,10 @@ Provide a concise, professional explanation (2-3 sentences) for why this decisio
 
 Keep it clear and suitable for audit logs."""
             
+            # Use deployment name for Azure, model name for regular OpenAI
+            model_or_deployment = AZURE_OPENAI_CHAT_DEPLOYMENT_NAME if USE_AZURE_OPENAI else MODEL_NAME
             response = self.client.chat.completions.create(
-                model=MODEL_NAME,
+                model=model_or_deployment,
                 messages=[
                     {"role": "system", "content": "You are a security and access management expert. Provide clear, professional explanations for access decisions."},
                     {"role": "user", "content": prompt}
@@ -118,8 +133,10 @@ Extract and return JSON with:
 
 Return only valid JSON, no additional text."""
             
+            # Use deployment name for Azure, model name for regular OpenAI
+            model_or_deployment = AZURE_OPENAI_CHAT_DEPLOYMENT_NAME if USE_AZURE_OPENAI else MODEL_NAME
             response = self.client.chat.completions.create(
-                model=MODEL_NAME,
+                model=model_or_deployment,
                 messages=[
                     {"role": "system", "content": "You are an expert at analyzing access requests. Return only valid JSON."},
                     {"role": "user", "content": prompt}

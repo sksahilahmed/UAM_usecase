@@ -8,7 +8,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.logger import logger
-from config import LOGS_DIR, MASTER_TRACKER_PATH, OPENAI_API_KEY
+from config import LOGS_DIR, MASTER_TRACKER_PATH, OPENAI_API_KEY, AZURE_OPENAI_API_KEY, USE_AZURE_OPENAI
 from database.models import init_database
 from excel_parser.master_tracker import MasterTrackerParser
 from agents.uam_agent import UAMAgent
@@ -35,12 +35,28 @@ def check_and_run_setup():
     print("  UAM Agentic AI System - Initial Setup Required")
     print("="*70 + "\n")
     
-    # Check .env
-    if not OPENAI_API_KEY or OPENAI_API_KEY == "":
-        print("❌ ERROR: OPENAI_API_KEY not found in .env file")
-        print("   Please create a .env file with your OpenAI API key.")
-        print("   See .env.example for reference.\n")
+    # Check .env - support both OpenAI and Azure OpenAI
+    has_openai_key = OPENAI_API_KEY and OPENAI_API_KEY != ""
+    has_azure_key = AZURE_OPENAI_API_KEY and AZURE_OPENAI_API_KEY != ""
+    
+    if not has_openai_key and not has_azure_key:
+        print("❌ ERROR: No API key found in .env file")
+        print("   You need either OPENAI_API_KEY (for OpenAI) or AZURE_OPENAI_API_KEY (for Azure OpenAI)")
+        print("\n📝 To fix this:")
+        print("   Option 1: For OpenAI - Add to .env:")
+        print("      OPENAI_API_KEY=your-api-key-here")
+        print("\n   Option 2: For Azure OpenAI - Add to .env:")
+        print("      AZURE_OPENAI_API_KEY=your-azure-key")
+        print("      AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com")
+        print("      AZURE_OPENAI_CHAT_DEPLOYMENT_NAME=your-deployment-name")
+        print("      AZURE_OPENAI_API_VERSION=2024-02-15-preview")
+        print("\n   See CREATE_ENV_INSTRUCTIONS.md for detailed guide.\n")
         return False
+    
+    if USE_AZURE_OPENAI:
+        print(f"✅ Using Azure OpenAI configuration")
+    elif has_openai_key:
+        print(f"✅ Using OpenAI configuration")
     
     # Check master tracker
     if not MASTER_TRACKER_PATH.exists():

@@ -1,0 +1,146 @@
+[
+  {
+    "employee_id": "EMP001",
+    "username": "john.doe",
+    "email": "john.doe@company.com",
+    "name": "John Doe",
+    "department": "Sales",
+    "role": "Sales Manager",
+    "completed_trainings": [
+      "CRM Analytics Training",
+      "HR Compliance Training",
+      "Finance Security Training",
+      "Research Associate Training"
+    ],
+    "security_clearance_level": 2,
+    "employee_type": "Full-time",
+    "manager": "Alice Johnson"
+  },
+  {
+    "employee_id": "EMP002",
+    "username": "jane.smith",
+    "email": "jane.smith@company.com",
+    "name": "Jane Smith",
+    "department": "HR",
+    "role": "HR Specialist",
+    "completed_trainings": [
+      "HR Compliance Training"
+    ],
+    "security_clearance_level": 1,
+    "employee_type": "Full-time",
+    "manager": "Susan Clark"
+  },
+  {
+    "employee_id": "EMP003",
+    "username": "bob.wilson",
+    "email": "bob.wilson@company.com",
+    "name": "Bob Wilson",
+    "department": "Finance",
+    "role": "Finance Analyst",
+    "completed_trainings": [
+      "Finance Security Training",
+      "Data Manager Training"
+    ],
+    "security_clearance_level": 2,
+    "employee_type": "Full-time",
+    "manager": "David Lee"
+  },
+  {
+    "employee_id": "EMP004",
+    "username": "sarah.jones",
+    "email": "sarah.jones@company.com",
+    "name": "Sarah Jones",
+    "department": "Research",
+    "role": "Research Associate",
+    "completed_trainings": [
+      "Research Associate Training",
+      "Data Manager Training"
+    ],
+    "security_clearance_level": 1,
+    "employee_type": "Full-time",
+    "manager": "Alice Johnson"
+  },
+  {
+    "employee_id": "EMP005",
+    "username": "mike.brown",
+    "email": "mike.brown@company.com",
+    "name": "Mike Brown",
+    "department": "Compliance",
+    "role": "Compliance Officer",
+    "completed_trainings": [
+      "Compliance Audit Training",
+      "Legal Compliance Training"
+    ],
+    "security_clearance_level": 3,
+    "employee_type": "Full-time",
+    "manager": "Emma Davis"
+  },
+  {
+    "employee_id": "EMP006",
+    "username": "lisa.white",
+    "email": "lisa.white@company.com",
+    "name": "Lisa White",
+    "department": "IT",
+    "role": "IT Support",
+    "completed_trainings": [],
+    "security_clearance_level": 1,
+    "employee_type": "Full-time",
+    "manager": "Bob Lee"
+  },
+  {
+    "employee_id": "EMP007",
+    "username": "david.green",
+    "email": "david.green@company.com",
+    "name": "David Green",
+    "department": "Operations",
+    "role": "Field Monitor",
+    "completed_trainings": [
+      "Field Monitor Training"
+    ],
+    "security_clearance_level": 2,
+    "employee_type": "Full-time",
+    "manager": "Charlie Kim"
+  },
+  {
+    "employee_id": "EMP008",
+    "username": "contractor.one",
+    "email": "contractor.one@company.com",
+    "name": "Contractor One",
+    "department": "IT",
+    "role": "IT Consultant",
+    "completed_trainings": [
+      "Data Manager Training"
+    ],
+    "security_clearance_level": 1,
+    "employee_type": "Contractor",
+    "manager": "Bob Lee"
+  },
+  {
+    "employee_id": "EMP009",
+    "username": "intern.one",
+    "email": "intern.one@company.com",
+    "name": "Intern One",
+    "department": "Legal",
+    "role": "Legal Intern",
+    "completed_trainings": [
+      "Legal Compliance Training"
+    ],
+    "security_clearance_level": 0,
+    "employee_type": "Intern",
+    "manager": "Priya Menon"
+  },
+  {
+    "employee_id": "EMP010",
+    "username": "external.user",
+    "email": "external.user@external.com",
+    "name": "External User",
+    "department": "Research",
+    "role": "External Researcher",
+    "completed_trainings": [
+      "Research Associate Training"
+    ],
+    "security_clearance_level": 1,
+    "employee_type": "External",
+    "manager": "Alice Johnson"
+  }
+]

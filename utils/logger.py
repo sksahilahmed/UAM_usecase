@@ -98,7 +98,7 @@ except ImportError:
     LOGURU_AVAILABLE = False
     
     # Print warning
-    print("⚠️  Warning: loguru not installed. Using standard logging instead.")
+    print("[WARNING] loguru not installed. Using standard logging instead.")
     print("   To install loguru, run: pip install loguru")
     print("   Or install all dependencies: pip install -r requirements.txt\n")
 

@@ -10,7 +10,12 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
     OpenAI = None
-from config import OPENAI_API_KEY, MODEL_NAME, TEMPERATURE, MASTER_TRACKER_PATH
+from config import (
+    OPENAI_API_KEY, MODEL_NAME, TEMPERATURE, MASTER_TRACKER_PATH,
+    USE_AZURE_OPENAI, AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT,
+    AZURE_OPENAI_API_VERSION, AZURE_OPENAI_CHAT_DEPLOYMENT_NAME
+)
+from utils.openai_client import get_openai_client
 from excel_parser.master_tracker import MasterTrackerParser
 from database.models import get_db_session, PermissionRule
 from database.audit_log import AuditLogger
@@ -22,14 +27,37 @@ class SetupTrainer:
     def __init__(self):
         self.parser = MasterTrackerParser()
         self.audit_logger = AuditLogger()
-        if OPENAI_AVAILABLE and OPENAI_API_KEY:
-            try:
-                self.client = OpenAI(api_key=OPENAI_API_KEY)
-            except Exception as e:
-                logger.warning(f"Failed to initialize OpenAI client: {e}")
-                self.client = None
+        self.client = None
+        self.client_error = None
+        
+        if not OPENAI_AVAILABLE:
+            logger.warning("OpenAI package not installed. Install with: pip install openai")
+            self.client_error = "OpenAI package not installed"
         else:
-            self.client = None
+            api_key = AZURE_OPENAI_API_KEY if USE_AZURE_OPENAI else OPENAI_API_KEY
+            api_key = api_key or OPENAI_API_KEY  # Fallback
+            
+            if not api_key or api_key.strip() == "":
+                logger.warning("OpenAI API key not found in .env file. Set OPENAI_API_KEY or AZURE_OPENAI_API_KEY")
+                self.client_error = "API key not configured"
+            else:
+                try:
+                    self.client = get_openai_client(
+                        api_key=api_key,
+                        azure_endpoint=AZURE_OPENAI_ENDPOINT if USE_AZURE_OPENAI else None,
+                        api_version=AZURE_OPENAI_API_VERSION if USE_AZURE_OPENAI else None,
+                        deployment_name=AZURE_OPENAI_CHAT_DEPLOYMENT_NAME if USE_AZURE_OPENAI else None,
+                        use_azure=USE_AZURE_OPENAI
+                    )
+                    if not self.client:
+                        self.client_error = "Failed to initialize OpenAI client"
+                        logger.warning("OpenAI client initialization failed. Check your API key and configuration.")
+                    else:
+                        logger.info("OpenAI client initialized successfully for AI-powered question generation")
+                except Exception as e:
+                    logger.error(f"Error initializing OpenAI client: {e}")
+                    self.client_error = str(e)
+        
         self.training_config = {}
         self.master_tracker_data = None
     
@@ -95,10 +123,105 @@ class SetupTrainer:
         return analysis
     
     def generate_questions(self, analysis: Dict) -> List[Dict]:
-        """Generate questions for user based on master tracker analysis"""
+        """Generate questions for user using AI based on master tracker analysis"""
+        if not self.client:
+            if self.client_error:
+                logger.warning(f"OpenAI client not available ({self.client_error}), using default questions")
+            else:
+                logger.warning("OpenAI client not available, using default questions")
+            return self._generate_default_questions()
+        
+        try:
+            # Prepare master tracker content for AI
+            rules = self.parser.parse_permission_rules()
+            master_tracker_summary = self._prepare_master_tracker_summary(analysis, rules)
+            
+            # Use AI to generate intelligent questions
+            prompt = f"""You are an AI assistant helping to set up a User Access Management system. 
+
+I have analyzed a master tracker Excel file with the following information:
+
+MASTER TRACKER SUMMARY:
+{master_tracker_summary}
+
+ANALYSIS DETAILS:
+- Total Rules: {analysis.get('total_rows', 0)}
+- Permission Types: {list(analysis.get('permission_types', {}).keys())}
+- Common Pre-requisites: {list(analysis.get('common_prerequisites', {}).keys())[:10]}
+- Auto-grant Enabled: {analysis.get('auto_grant_enabled_count', 0)} rules
+
+Based on this master tracker, I need you to:
+1. Identify what forms/documents are typically needed for these access requests
+2. Generate intelligent questions to understand the validation rules, approval criteria, and rejection criteria
+
+Please return a JSON object with this structure:
+{{
+    "identified_forms": ["Form 1", "Form 2", ...],
+    "questions": [
+        {{
+            "id": "question_id",
+            "type": "text" or "textarea",
+            "question": "The question text",
+            "help_text": "Helpful guidance",
+            "required": true or false
+        }}
+    ]
+}}
+
+Focus on generating questions that will help the system understand:
+- What forms are required for different permission types
+- Validation rules based on the prerequisites and permission types found
+- When to auto-approve based on the auto-grant patterns in the tracker
+- When to reject based on missing prerequisites
+- Any special cases or exceptions
+
+Return ONLY valid JSON, no additional text."""
+
+            # Use deployment name for Azure, model name for regular OpenAI
+            from config import USE_AZURE_OPENAI, AZURE_OPENAI_CHAT_DEPLOYMENT_NAME, MODEL_NAME
+            model_or_deployment = AZURE_OPENAI_CHAT_DEPLOYMENT_NAME if USE_AZURE_OPENAI else MODEL_NAME
+            
+            response = self.client.chat.completions.create(
+                model=model_or_deployment,
+                messages=[
+                    {"role": "system", "content": "You are an expert at analyzing access management requirements and generating intelligent questions. Return only valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                response_format={"type": "json_object"}
+            )
+            
+            ai_response = json.loads(response.choices[0].message.content)
+            
+            # Extract identified forms and store them
+            identified_forms = ai_response.get("identified_forms", [])
+            if identified_forms:
+                logger.info(f"AI identified {len(identified_forms)} forms: {identified_forms}")
+                # Store forms for later use in UI
+                if not hasattr(self, 'identified_forms'):
+                    self.identified_forms = []
+                self.identified_forms = identified_forms
+            
+            # Use AI-generated questions
+            questions = ai_response.get("questions", [])
+            
+            # Ensure we have at least the essential questions
+            if not questions or len(questions) < 3:
+                logger.warning("AI generated insufficient questions, using defaults")
+                return self._generate_default_questions()
+            
+            logger.info(f"AI generated {len(questions)} questions")
+            return questions
+            
+        except Exception as e:
+            logger.error(f"Error generating AI questions: {e}")
+            logger.info("Falling back to default questions")
+            return self._generate_default_questions()
+    
+    def _generate_default_questions(self) -> List[Dict]:
+        """Generate default questions if AI is not available"""
         questions = []
         
-        # Question 1: Forms identification
         questions.append({
             "id": "forms_identification",
             "type": "text",
@@ -107,7 +230,6 @@ class SetupTrainer:
             "required": True
         })
         
-        # Question 2: Validation rules
         questions.append({
             "id": "validation_rules",
             "type": "textarea",
@@ -116,7 +238,6 @@ class SetupTrainer:
             "required": True
         })
         
-        # Question 3: Auto-approval criteria
         questions.append({
             "id": "auto_approval_criteria",
             "type": "textarea",
@@ -125,7 +246,6 @@ class SetupTrainer:
             "required": True
         })
         
-        # Question 4: Rejection criteria
         questions.append({
             "id": "rejection_criteria",
             "type": "textarea",
@@ -134,7 +254,6 @@ class SetupTrainer:
             "required": True
         })
         
-        # Question 5: Special cases
         questions.append({
             "id": "special_cases",
             "type": "textarea",
@@ -145,12 +264,76 @@ class SetupTrainer:
         
         return questions
     
+    def _prepare_master_tracker_summary(self, analysis: Dict, rules: List[Dict]) -> str:
+        """Prepare a summary of master tracker for AI"""
+        summary_parts = []
+        
+        # Column headers
+        summary_parts.append(f"Columns: {', '.join(analysis.get('columns', []))}")
+        
+        # Permission types
+        perm_types = analysis.get('permission_types', {})
+        if perm_types:
+            summary_parts.append(f"\nPermission Types Found:")
+            for ptype, count in list(perm_types.items())[:10]:
+                summary_parts.append(f"  - {ptype}: {count} rules")
+        
+        # Sample rules
+        summary_parts.append(f"\nSample Rules (first 5):")
+        for i, rule in enumerate(rules[:5], 1):
+            summary_parts.append(f"\nRule {i}:")
+            summary_parts.append(f"  Permission: {rule.get('permission_name', 'N/A')}")
+            summary_parts.append(f"  Type: {rule.get('permission_type', 'N/A')}")
+            summary_parts.append(f"  Pre-requisites: {', '.join(rule.get('pre_requisites', [])[:5])}")
+            summary_parts.append(f"  Auto-grant: {rule.get('auto_grant_enabled', False)}")
+            summary_parts.append(f"  Priority: {rule.get('priority_level', 'N/A')}")
+        
+        # Common prerequisites
+        common_prereqs = analysis.get('common_prerequisites', {})
+        if common_prereqs:
+            summary_parts.append(f"\nMost Common Pre-requisites:")
+            for prereq, count in list(sorted(common_prereqs.items(), key=lambda x: x[1], reverse=True)[:10]):
+                summary_parts.append(f"  - {prereq}: appears in {count} rules")
+        
+        return "\n".join(summary_parts)
+    
+    def get_identified_forms(self) -> List[str]:
+        """Get forms identified by AI during question generation"""
+        return getattr(self, 'identified_forms', [])
+    
+    def is_ai_available(self) -> bool:
+        """Check if AI client is available"""
+        return self.client is not None
+    
+    def get_ai_status(self) -> Dict:
+        """Get status of AI configuration"""
+        status = {
+            "ai_available": self.is_ai_available(),
+            "openai_package_installed": OPENAI_AVAILABLE,
+            "api_key_configured": bool(OPENAI_API_KEY or AZURE_OPENAI_API_KEY),
+            "using_azure": USE_AZURE_OPENAI,
+            "error": self.client_error
+        }
+        return status
+    
     def train_with_user_responses(self, questions: List[Dict], responses: Dict[str, str]) -> Dict:
         """Train the system based on user responses"""
         try:
+            # Get AI-identified forms if available, otherwise use user input
+            ai_forms = self.get_identified_forms()
+            user_forms = responses.get("forms_identification", "").strip()
+            
+            # Combine AI-identified forms with user-provided forms
+            if user_forms:
+                user_forms_list = [f.strip() for f in user_forms.split(",") if f.strip()]
+                all_forms = list(set(ai_forms + user_forms_list))  # Remove duplicates
+            else:
+                all_forms = ai_forms
+            
             # Store training configuration
             self.training_config = {
-                "forms": responses.get("forms_identification", "").split(",") if responses.get("forms_identification") else [],
+                "forms": all_forms,
+                "ai_identified_forms": ai_forms,
                 "validation_rules": responses.get("validation_rules", ""),
                 "auto_approval_criteria": responses.get("auto_approval_criteria", ""),
                 "rejection_criteria": responses.get("rejection_criteria", ""),

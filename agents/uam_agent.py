@@ -108,7 +108,7 @@ class UAMAgent:
         }
     
     def _execute_decision(self, request_id: int, evaluation: Dict) -> Dict:
-        """Execute the decision (grant access or create ticket)"""
+        """Execute the decision (grant access, create ticket, reject, or ask for more info)"""
         decision = evaluation["decision"]
         
         if decision == "grant":
@@ -119,6 +119,24 @@ class UAMAgent:
                 "status": "granted",
                 "auto_granted": True,
                 "message": "Access has been automatically granted"
+            }
+        
+        elif decision == "reject":
+            # Reject the request
+            logger.info(f"Rejecting request {request_id}")
+            return {
+                "status": "rejected",
+                "auto_granted": False,
+                "message": "Request has been rejected based on validation rules"
+            }
+        
+        elif decision == "ask_for_more_info":
+            # Request more information
+            logger.info(f"Requesting more information for request {request_id}")
+            return {
+                "status": "needs_more_info",
+                "auto_granted": False,
+                "message": "Additional information required to process this request"
             }
         
         elif decision == "create_ticket":
@@ -140,24 +158,46 @@ class UAMAgent:
     
     def _create_ticket(self, request_id: int, evaluation: Dict) -> str:
         """
-        Create a ticket in ServiceNow (currently simulated)
+        Create a ticket in ServiceNow
         
-        In the future, this will integrate with ServiceNow API:
-        - servicenow.create_incident(...)
+        Tries to create a real ServiceNow ticket if configured,
+        otherwise falls back to simulated ticket ID
         """
-        # Simulated ticket ID (format: TKT-YYYYMMDD-HHMMSS-REQUESTID)
+        from integrations.servicenow_client import get_servicenow_client
+        from database.user_context import UserContextManager
+        
+        servicenow_client = get_servicenow_client()
+        
+        # Try to create real ServiceNow ticket
+        if servicenow_client:
+            try:
+                # Get request details
+                ucm = UserContextManager()
+                request = ucm.get_request(request_id)
+                
+                if request:
+                    result = servicenow_client.create_access_request(
+                        user_id=request.user_id,
+                        request_type=request.request_type,
+                        requested_permission=request.requested_permission,
+                        description=request.description,
+                        priority_score=evaluation.get("priority_score", 0),
+                        ai_decision=evaluation.get("decision", "create_ticket"),
+                        ai_reasoning=evaluation.get("reasoning", "")
+                    )
+                    
+                    if result.get("success") and result.get("ticket_number"):
+                        ticket_id = result.get("ticket_number")
+                        logger.info(f"Created ServiceNow ticket {ticket_id} for request {request_id}")
+                        return ticket_id
+            except Exception as e:
+                logger.warning(f"Failed to create ServiceNow ticket, using fallback: {str(e)}")
+        
+        # Fallback to simulated ticket ID
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         ticket_id = f"TKT-{timestamp}-{request_id}"
-        
-        logger.info(f"Created ticket {ticket_id} for request {request_id}")
-        # TODO: Integrate with ServiceNow API when available
-        # servicenow_client.create_incident(
-        #     short_description=f"Access Request: {evaluation.get('requested_permission')}",
-        #     description=evaluation.get('reasoning'),
-        #     priority=evaluation.get('priority_level'),
-        #     ...
-        # )
+        logger.info(f"Created simulated ticket {ticket_id} for request {request_id}")
         
         return ticket_id
     
